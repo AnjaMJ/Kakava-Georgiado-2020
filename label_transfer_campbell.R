@@ -204,17 +204,6 @@ p_n1 + p_n2 + plot_annotation(
 dev.off()
 
 
-pdf('./short_label.transfer_romanov.pdf', width = 17, height = 10)
-# R_adan vs campbell taxonomy
-p2 + p4 + plot_annotation(
-  title = 'Cell-calling comparison 1',
-  subtitle = 'Comparing cell-calling from R. Adan with Romanov taxonomy classification - max.pred 60%')
-# R_adan vs campbell neuronal sub-cluster
-p1_n + p2_n + plot_annotation(
-  title = 'Cell-calling comparison, Neuronal clusters only',
-  subtitle = 'Comparing cell-calling from R. Adan with Romanov celltype classification - max.pred 20%, neuronal subcluster')
-dev.off()
-
 
 
 
