@@ -1,0 +1,309 @@
+---
+title: "label_transfer_others"
+output: html_document
+---
+Further label transfers
+```{r}
+library(Seurat)
+library(tidyverse)
+library(data.table)
+library(patchwork)
+library(gridExtra)
+library(grid)
+library(openxlsx)
+
+id2ensembl <- fread('/home/cbmr/qwn903/ygg-projects/amj/tune/timshel-bmicelltypes/data/gene_annotations/Mus_musculus.GRCm38.90.gene_name_version2ensembl.txt.gz')
+```
+
+### Datatset edits
+Mikkelsen
+```{r}
+mik <- readRDS("/data/pub-others/mikkelsen-natureneuroscience-2019/output/mikkelsen_natureneuroscience_2019_seuratObj.RDS.gz")
+mik_meta <- fread("/data/pub-others/mikkelsen-natureneuroscience-2019/mikkelsen_natureneuroscience_2019_1_neurons_metadata.csv.gz")
+mik_meta %>% column_to_rownames("Cell.ID") -> mik_meta
+```
+Edit Mikkelsen dataset to have ensembl ids
+Subset to only cells with metadata
+```{r}
+mik.dat <- as.data.frame(as.matrix(mik@assays$RNA@counts)) %>% rownames_to_column("gene_name_optimal")
+id_join <- left_join(mik.dat, id2ensembl[, c(1,2)])
+mik.dat <- id_join[, c(7216, 2:7215)] %>% na.omit %>% remove_rownames() %>% column_to_rownames('ensembl_gene_id')
+
+mik <- CreateSeuratObject(counts = mik.dat, meta.data = mik_meta)
+mik_sub <- subset(mik, cell_type %in% mik_meta$cell_type)
+
+mik_sub <- SCTransform(mik_sub)
+
+# Save object
+save(mik_sub, file = "./dat/mikkelsen_seurat_obj.RData")
+```
+
+Moffett
+```{r}
+mof.dat <- fread("/data/pub-others/moffitt-science-2018/moffitt_all_cells_raw_ensembl.csv.gz", header = T, sep = ",") %>% column_to_rownames('ensembl')
+mof_meta <- fread("/data/pub-others/moffitt-science-2018/moffitt-science-2018_1_metadata.csv.gz")
+mof_meta %>% column_to_rownames("Cell.name") -> mof_meta
+
+mof <- CreateSeuratObject(counts = mof.dat, meta.data = mof_meta)
+mof <- SCTransform(mof)
+# Save object
+save(mof, file = "./dat/mof_seurat_obj.RData")
+```
+
+Kim 10x
+```{r}
+kim.dat <- fread("~/ygg-projects/amj/my_projects/kimVMH2019/processed/kimVMH2019_10x.umi.csv.gz")
+kim_meta <- fread("~/ygg-projects/amj/my_projects/kimVMH2019/processed/kimVMH2019_10x.metadata.csv")
+kim_meta %>% column_to_rownames("cell_id") -> kim_meta
+```
+Edit Kim dataset to have ensembl ids
+```{r}
+colnames(kim.dat)[1] <- "gene_name_optimal"
+id_join <- left_join(kim.dat, id2ensembl[, c(1,2)])
+kim.dat <- id_join[,c(41387,2:41386)] %>% na.omit %>% remove_rownames() %>% column_to_rownames('ensembl_gene_id')
+kim <- CreateSeuratObject(counts = kim.dat, meta.data = kim_meta)
+kim <- SCTransform(kim)
+# Save object
+save(kim, file = "./dat/kim10x_seurat_obj.RData")
+```
+
+Kim smartseq
+```{r}
+kim.dat <- fread("~/ygg-projects/amj/my_projects/kimVMH2019/processed/kimVMH2019_smartseq.umi.csv.gz")
+kim_meta <- fread("~/ygg-projects/amj/my_projects/kimVMH2019/processed/kimVMH2019_smartseq.metadata.csv")
+kim_meta %>% column_to_rownames("cell_id") -> kim_meta
+```
+Edit Kim dataset to have ensembl ids
+```{r}
+colnames(kim.dat)[1] <- "gene_name_optimal"
+id_join <- left_join(kim.dat, id2ensembl[, c(1,2)])
+kim.dat <- id_join[,c(4576,2:4575)] %>% na.omit %>% remove_rownames() %>% column_to_rownames('ensembl_gene_id')
+kim <- CreateSeuratObject(counts = kim.dat, meta.data = kim_meta)
+kim <- SCTransform(kim)
+# Save object
+save(kim, file = "./dat/kimsmartseq_seurat_obj.RData")
+```
+
+### Label transfer
+```{r}
+load('./dat/tomcells_r_adan_seurat_obj.RData')
+# Remove cells with no cell-calling from R. Adan
+seur_obj <- subset(seur_obj, cells = na.omit(seur_obj@meta.data$V1))
+```
+Run together
+```{r}
+# Mikkelsen
+load('./dat/mikkelsen_seurat_obj.RData')
+hyp.anchors <- FindTransferAnchors(reference = mik_sub, normalization.method = "SCT",
+                                   query = seur_obj, dims = 1:30, reference.assay = "SCT", 
+                                   query.assay = "SCT", reduction = "cca")
+predictions_mik <- TransferData(anchorset = hyp.anchors, 
+                                refdata = mik_sub$cell_type, dims = 1:30, weight.reduction = "cca")
+
+# Moffett
+load('./dat/mof_seurat_obj.RData')
+hyp.anchors <- FindTransferAnchors(reference = mof, normalization.method = "SCT",
+                                   query = seur_obj, dims = 1:30, reference.assay = "SCT", 
+                                   query.assay = "SCT", reduction = "cca")
+predictions_mof <- TransferData(anchorset = hyp.anchors, 
+                                refdata = mof$cell_type, dims = 1:30, weight.reduction = "cca")
+
+# Kim smartseq
+load('./dat/kimsmartseq_seurat_obj.RData')
+hyp.anchors <- FindTransferAnchors(reference = kim, normalization.method = "SCT",
+                                   query = seur_obj, dims = 1:30, reference.assay = "SCT", 
+                                   query.assay = "SCT", reduction = "cca")
+predictions_kim <- TransferData(anchorset = hyp.anchors, 
+                                refdata = kim$cell_type, dims = 1:30, weight.reduction = "cca")
+
+# Kim 10x
+load('./dat/kim10x_seurat_obj.RData')
+hyp.anchors <- FindTransferAnchors(reference = kim, normalization.method = "SCT",
+                                   query = seur_obj, dims = 1:30, reference.assay = "SCT", 
+                                   query.assay = "SCT", reduction = "cca")
+predictions_kim10x <- TransferData(anchorset = hyp.anchors, 
+                                refdata = kim$cell_type, dims = 1:30, weight.reduction = "cca")
+
+
+# Editing predictions
+predictions_mik %>% rownames_to_column("V1") %>%
+  mutate(max_pred_mik = ifelse(prediction.score.max > 0.5, predicted.id, NA),
+         pred_score_mik = ifelse(prediction.score.max > 0.5, prediction.score.max, NA)) %>%
+  select(V1, max_pred_mik, pred_score_mik) -> pred1
+
+predictions_mof %>% rownames_to_column("V1")%>% filter(prediction.score.max > 0.5) %>% 
+  rename(max_pred_mof = predicted.id,
+         pred_score_mof = prediction.score.max) %>%
+  select(V1, max_pred_mof, pred_score_mof) -> pred2
+
+predictions_kim %>% rownames_to_column("V1") %>% filter(prediction.score.max > 0.5) %>% 
+  rename(max_pred_kim = predicted.id,
+         pred_score_kim = prediction.score.max) %>%
+  select(V1, max_pred_kim, pred_score_kim) -> pred3
+
+predictions_kim10x %>% rownames_to_column("V1") %>% filter(prediction.score.max > 0.5) %>% 
+  rename(max_pred_kim10 = predicted.id,
+         pred_score_kim10 = prediction.score.max) %>%
+  select(V1, max_pred_kim10, pred_score_kim10) -> pred4
+
+
+predictions_all <- left_join(pred1, pred2) %>% left_join(., pred3) %>%
+  left_join(., pred4) %>% column_to_rownames('V1')
+
+```
+Adding predictions as metadata
+```{r}
+load('./dat/tomcells_w.labels_r_adan_seurat_obj.RData')
+seur_obj@meta.data
+seur_obj <- AddMetaData(seur_obj, metadata = predictions_all)
+
+# Save object
+save(seur_obj, file = "./dat/tomcells_w.labels_extra_r_adan_seurat_obj.RData")
+```
+
+### Visualization
+All cells
+```{r}
+load("./dat/tomcells_w.labels_extra_r_adan_seurat_obj.RData")
+seur_obj <- RunPCA(seur_obj, verbose = F)
+seur_obj <- RunUMAP(seur_obj, dims = 1:30)
+
+seur_obj <- FindNeighbors(seur_obj, dims = 1:30)
+seur_obj <- FindClusters(seur_obj, resolution = 2.5)
+
+
+p1 <- DimPlot(seur_obj, label = TRUE, group.by = 'cell_types', label.size = 6, pt.size = 3, repel = T) + 
+  theme(legend.position = "bottom") + ggtitle("R Adan celltypes")
+
+p2 <- DimPlot(seur_obj, label = T, group.by = 'max_pred_mik', label.size = 6, pt.size = 3, repel = T) + 
+  theme(legend.position = "bottom") + ggtitle("Mikkelsen labels")
+
+p3 <- DimPlot(seur_obj, label = T, group.by = 'max_pred_mof', label.size = 6, pt.size = 3, repel = T) + 
+  theme(legend.position = "bottom")+ ggtitle("Moffett labels")
+
+p4 <- DimPlot(seur_obj, label = T, group.by = 'max_pred_kim', label.size = 6, pt.size = 3, repel = T) + 
+  theme(legend.position = "bottom") + ggtitle("Kim smartseq labels")
+
+p5 <- DimPlot(seur_obj, label = T, group.by = 'max_pred_kim10', label.size = 6, pt.size = 3, repel = T) + 
+  theme(legend.position = "bottom") + ggtitle("Kim 10x labels")
+```
+
+Only neurons
+```{r}
+# Neuronal clusters only
+seur_obj_neuro <- subset(seur_obj, cells = seur_obj@meta.data[grepl('neurons', seur_obj$cell_types), 'V1'])
+# These are now standard steps in the Seurat workflow for visualization and clustering
+seur_obj_neuro <- RunPCA(seur_obj_neuro, verbose = F)
+seur_obj_neuro <- RunUMAP(seur_obj_neuro, dims = 1:30)
+seur_obj_neuro <- FindNeighbors(seur_obj_neuro, dims = 1:30)
+seur_obj_neuro <- FindClusters(seur_obj_neuro, resolution = 1.7)
+
+p_n1 <- DimPlot(seur_obj_neuro, group.by = "cell_types", label = T, label.size = 4, pt.size = 3, repel = T) + 
+  theme(legend.position = "bottom") 
+
+p_n2 <- DimPlot(seur_obj_neuro, group.by = "max_pred_mik", label = T, label.size = 4, pt.size = 3, repel = T) + 
+  theme(legend.position = "bottom") + ggtitle("Mikkelsen")
+
+p_n3 <- DimPlot(seur_obj_neuro, group.by = "max_pred_mof", label = T, label.size = 4, pt.size = 3, repel = T) + 
+  theme(legend.position = "bottom") + ggtitle("Moffett")
+
+p_n4 <- DimPlot(seur_obj_neuro, group.by = "max_pred_kim", label = T, label.size = 4, pt.size = 3, repel = T) + 
+  theme(legend.position = "bottom") + ggtitle("Kim smartseq")
+
+p_n5 <- DimPlot(seur_obj_neuro, group.by = "max_pred_kim10", label = T, label.size = 4, pt.size = 3, repel = T) + theme(legend.position = "bottom")+ ggtitle("Kim 10x")
+```
+
+
+Writing output
+```{r}
+pdf('./output/Label_transfer_all.pdf', width = 17, height = 10)
+# R_adan celltypes
+p1 + p2 + plot_annotation(
+  title = 'Labeltransfer',
+  subtitle = 'Comparing labels from R. Adan with Mikkelsen labels - max.pred 50%')
+p1 + p3 + plot_annotation(
+  title = 'Labeltransfer',
+  subtitle = 'Comparing labels from R. Adan with Moffett labels - max.pred 50%')
+p1 + p4 + plot_annotation(
+  title = 'Labeltransfer',
+  subtitle = 'Comparing labels from R. Adan with Kim smartseq labels - max.pred 50%')
+p1 + p5 + plot_annotation(
+  title = 'Labeltransfer',
+  subtitle = 'Comparing labels from R. Adan with Kim 10x labels - max.pred 50%')
+p_n1 + p_n2 + plot_annotation(
+  title = 'Labeltransfer, Neuronal clusters only',
+  subtitle = 'Comparing labels from R. Adan with Mikkelsen labels - max.pred 50%, neuronal subcluster')
+p_n1 + p_n3 + plot_annotation(
+  title = 'Labeltransfer, Neuronal clusters only',
+  subtitle = 'Comparing labels from R. Adan with Moffett labels - max.pred 50%, neuronal subcluster')
+p_n1 + p_n4 + plot_annotation(
+  title = 'Labeltransfer, Neuronal clusters only',
+  subtitle = 'Comparing labels from R. Adan with Kim smartseq labels - max.pred 50%, neuronal subcluster')
+p_n1 + p_n5 + plot_annotation(
+  title = 'Labeltransfer, Neuronal clusters only',
+  subtitle = 'Comparing labels from R. Adan with Kim 10x labels - max.pred 50%, neuronal subcluster')
+dev.off()
+```
+
+Highlighting interesting mappings.
+Only include clusters in which over 20% of the cells have prediction-scores above 75%
+```{r}
+h_tab <- seur_obj@meta.data
+
+h_tab %>% add_count(cell_types) %>% group_by(cell_types) %>%
+  mutate_at(vars(starts_with('pred_score')), function(x)sum(as.numeric(x)>0.75, na.rm = T)) %>% 
+  mutate(r_mik = pred_score_mik/n,
+         r_mof = pred_score_mof/n,
+         r_kim = pred_score_kim/n,
+         r_kim10 = pred_score_kim10/n,) %>% 
+  select(starts_with('r_')) %>% mutate_at(vars(starts_with("r_")), function(x)x>0.2) %>% unique -> h_out
+
+h_tab[which(h_tab$cell_types %in% h_out[which(h_out$r_kim>0.25),]$cell_types),]
+```
+
+### Tables
+```{r}
+tab <- seur_obj@meta.data
+tab_mik <- tab %>% group_by(cell_types) %>% count(max_pred_mik) %>% filter(n>1) %>% arrange(cell_types, desc(n)) %>%
+  left_join(., h_out[,c(1,2)])
+
+tab_mof <- tab %>% group_by(cell_types) %>% count(max_pred_mof) %>% filter(n>1) %>% arrange(cell_types, desc(n))%>%
+  left_join(., h_out[,c(1,3)])
+
+tab_kim <- tab %>% group_by(cell_types) %>% count(max_pred_kim) %>% filter(n>1) %>% arrange(cell_types, desc(n))%>%
+  left_join(., h_out[,c(1,4)])
+
+tab_kim10 <- tab %>% group_by(cell_types) %>% count(max_pred_kim10) %>% filter(n>1) %>% arrange(cell_types, desc(n))%>%
+  left_join(., h_out[,c(1,5)])
+
+tab_mik$cell_types[duplicated(tab_mik$cell_types)] <- ""
+tab_mof$cell_types[duplicated(tab_mof$cell_types)] <- ""
+tab_kim$cell_types[duplicated(tab_kim$cell_types)] <- ""
+tab_kim10$cell_types[duplicated(tab_kim10$cell_types)] <- ""
+
+
+pdf('./output/Label_transfer_highlights.pdf')
+grid.arrange(textGrob("Mikkelsen labeltransfer", just = "top", gp=gpar(fontsize = 14)), 
+             tableGrob(tab_mik[grepl(TRUE, tab_mik$r_mik),1:3], rows = NULL), heights = c(0.05,1))
+grid.arrange(textGrob("Moffett labeltransfer", just = "top", gp=gpar(fontsize = 14)), 
+             tableGrob(tab_mof[grepl(TRUE, tab_mof$r_mof),1:3], rows = NULL), heights = c(0.05,1))
+grid.arrange(textGrob("Kim smartseq labeltransfer", just = "top", gp=gpar(fontsize = 14)), 
+             tableGrob(tab_kim[grepl(TRUE, tab_kim$r_kim),1:3], rows = NULL), heights = c(0.05,1))
+# grid.arrange(textGrob("Kim 10x labeltransfer", just = "top", gp=gpar(fontsize = 14)),
+#              tableGrob(tab_kim10[grepl(TRUE, tab_kim10$r_kim10),1:3], rows = NULL), heights = c(0.05,1))
+# No cells from Kim10x in the highlights table output
+dev.off()
+
+```
+
+Write excel with all mapping information
+```{r}
+# Make a column with the mapping prediction score
+tab <- seur_obj@meta.data
+
+tab %>% select('cell_types', starts_with('max_pred'), starts_with('pred_score')) -> all_tabs
+
+write.xlsx(all_tabs, file = './output/all_extra_labeltransfer.xlsx')
+
+```
+
