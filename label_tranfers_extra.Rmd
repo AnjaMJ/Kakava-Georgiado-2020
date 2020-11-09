@@ -301,7 +301,8 @@ Write excel with all mapping information
 # Make a column with the mapping prediction score
 tab <- seur_obj@meta.data
 
-tab %>% select('cell_types', starts_with('max_pred'), starts_with('pred_score')) -> all_tabs
+tab %>% select('cell_types', starts_with('max_pred'), starts_with('pred_score')) %>%
+  select(-"pred_score_neuron1.5", -"max_pred_neuron1.5" )-> all_tabs
 
 write.xlsx(all_tabs, file = './output/all_extra_labeltransfer.xlsx')
 

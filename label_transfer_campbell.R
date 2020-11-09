@@ -76,19 +76,28 @@ predictions_taxo <- TransferData(anchorset = hyp.anchors,
                                  refdata = cam_obj$taxonomy_lvl2, dims = 1:30, weight.reduction = "cca")
 
 # Editing predictions together
-predictions_neurons %>% rownames_to_column("V1") %>% mutate(max_pred_neuron1 = ifelse(prediction.score.max > 0.6, predicted.id, NA)) %>%
-  select(V1, max_pred_neuron1) -> pred1
+predictions_neurons %>% rownames_to_column("V1") %>% filter(prediction.score.max > 0.5) %>% 
+  rename(max_pred_neuron1 = predicted.id,
+         pred_score_neuron1 = prediction.score.max) %>%
+  select(V1, max_pred_neuron1, pred_score_neuron1) -> pred1
 
-predictions_neurons %>% rownames_to_column("V1") %>% mutate(max_pred_neuron1.5 = ifelse(prediction.score.max > 0.85, predicted.id, NA)) %>%
-  select(V1, max_pred_neuron1.5) -> pred1.5
+predictions_neurons %>% rownames_to_column("V1") %>% filter(prediction.score.max > 0.85) %>% 
+  rename(max_pred_neuron1.5 = predicted.id,
+         pred_score_neuron1.5 = prediction.score.max) %>%
+  select(V1, max_pred_neuron1.5, pred_score_neuron1.5) -> pred1.5
 
-predictions_neurons2 %>% rownames_to_column("V1") %>% mutate(max_pred_neuron2 = ifelse(prediction.score.max > 0.6, predicted.id, NA)) %>%
-  select(V1, max_pred_neuron2) -> pred2
+predictions_neurons2 %>% rownames_to_column("V1") %>% filter(prediction.score.max > 0.5) %>% 
+  rename(max_pred_neuron2 = predicted.id,
+         pred_score_neuron2 = prediction.score.max) %>%
+  select(V1, max_pred_neuron2, pred_score_neuron2) -> pred2
 
-predictions_taxo %>% rownames_to_column("V1") %>% mutate(max_pred_taxo = ifelse(prediction.score.max > 0.6, predicted.id, NA)) %>%
-  select(V1, max_pred_taxo) -> pred3
+predictions_taxo %>% rownames_to_column("V1") %>% filter(prediction.score.max > 0.5) %>% 
+  rename(max_pred_taxo = predicted.id,
+         pred_score_taxo = prediction.score.max) %>%
+  select(V1, max_pred_taxo, pred_score_taxo) -> pred3
 
 predictions <- left_join(pred1, pred2) %>% left_join(., pred3) %>% left_join(., pred1.5) %>% column_to_rownames('V1')
+
 
 seur_obj <- AddMetaData(seur_obj, metadata = predictions)
 head(seur_obj@meta.data)
